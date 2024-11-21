@@ -102,7 +102,7 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
         b: Biases, of shape (H,)
 
     Returns a tuple of:
-        next_h: Next hidden state, of shape (N, H)z
+        next_h: Next hidden state, of shape (N, H)
         cache: Tuple of values needed for the backward pass.
     """
     next_h, cache = None, None
@@ -145,7 +145,7 @@ def rnn_step_backward(dnext_h, cache):
     ##########################################################################
     # Replace "pass" statement with your code
     x, prev_h, Wx, Wh, next_h,b,a_t = cache
-    tanh_derivaive = 1 - torch.tanh(a_t) ** 2 
+    tanh_derivaive = 1 - torch.tanh(a_t) ** 2
     tmp = dnext_h*tanh_derivaive
     dx = tmp.mm(Wx.t())
     dprev_h = tmp.mm(Wh.t())
@@ -189,7 +189,7 @@ def rnn_forward(x, h0, Wx, Wh, b):
     h = torch.zeros((N,T,H),device=x.device,dtype=x.dtype)
     cache = []
     for i in range(T):
-        hi,tmp = rnn_step_forward(x[:,i,:].squeeze(1),hi,Wx,Wh,b)#一顿维度操作后写对了。。
+        hi,tmp = rnn_step_forward(x[:,i,:].squeeze(1),hi,Wx,Wh,b)
         h[:,i,:] = hi.squeeze(1)
         cache.append(tmp)
     ##########################################################################
@@ -222,7 +222,8 @@ def rnn_backward(dh, cache):
     # TODO: Implement the backward pass for a vanilla RNN running an entire
     # sequence of data. You should use the rnn_step_backward function that you
     # defined above. You can use a for loop to help compute the backward pass.
-    ########################################################################## 
+    ##########################################################################
+    # Replace "pass" statement with your code
     N,T,H = dh.shape
     _,D = cache[0][0].shape
     dprev_h = 0#dh_T没有下一个时间步，因此为初始dprev_h为0
@@ -265,7 +266,7 @@ class RNN(nn.Module):
         super().__init__()
 
         # Register parameters
-        self.Wx = nn.Parameter(#??????????????????????????????????????????????
+        self.Wx = nn.Parameter(
             torch.randn(input_dim, hidden_dim).div(math.sqrt(input_dim))
         )
         self.Wh = nn.Parameter(
@@ -376,9 +377,11 @@ def temporal_softmax_loss(x, y, ignore_index=None):
     # all timesteps and *averaging* across the minibatch.
     ##########################################################################
     # Replace "pass" statement with your code
-    #不是很懂这个view咋用，和reshape的区别是
-    #loss = torch.nn.functional.cross_entropy(input=x.view(-1, x.size(-1)), target=y.view(-1), ignore_index=ignore_index, reduction='sum')/x.shape[0]
     loss = torch.nn.functional.cross_entropy(input=x.reshape(-1, x.size(-1)), target=y.reshape(-1), ignore_index=ignore_index, reduction='sum')/x.shape[0]
+    #loss1 = torch.nn.functional.cross_entropy(input=x.view(-1, x.size(-1)), target=y.view(-1), ignore_index=ignore_index, reduction='sum')
+    #loss2 = torch.nn.functional.cross_entropy(input=x.view(-1, x.size(-1)), target=y.view(-1), ignore_index=ignore_index, reduction='mean')*(x.shape[1]*x.shape[0])
+    #print(loss1)
+    #print(loss2)
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
@@ -449,7 +452,6 @@ class CaptioningRNN(nn.Module):
         # (2) feature projection (from CNN pooled feature to h0)
         ######################################################################
         # Replace "pass" statement with your code
-        
         self.W = wordvec_dim
         self.H = hidden_dim
         self.D = input_dim
@@ -460,15 +462,18 @@ class CaptioningRNN(nn.Module):
         #RNN
         if cell_type == "rnn":
             self.rnn = RNN(wordvec_dim,hidden_dim)
+            #特征投影
+            self.feature_projection = nn.Linear(6400,hidden_dim)#是线性层展平了4*4的特征图
         elif cell_type == "lstm":
             self.rnn = LSTM(wordvec_dim,hidden_dim)
+            #特征投影
+            self.feature_projection = nn.Linear(6400,hidden_dim)#是线性层展平了4*4的特征图
         elif cell_type == "attn":
             self.rnn = AttentionLSTM(wordvec_dim,hidden_dim)
+            #特征投影
+            self.feature_projection = torch.nn.Conv2d(400, hidden_dim,(1,1))
         #输出投影
         self.output_projection = nn.Linear(hidden_dim,vocab_size)
-        #特征投影
-        self.feature_projection = nn.Linear(6400,hidden_dim)#是线性层展平了4*4的特征图
-
         ######################################################################
         #                            END OF YOUR CODE                        #
         ######################################################################
@@ -519,17 +524,16 @@ class CaptioningRNN(nn.Module):
         # Do not worry about regularizing the weights or their gradients!
         ######################################################################
         # Replace "pass" statement with your code
-        
         #图片编码
         N = images.shape[0]
-        print(images.shape)
+        #print(images.shape)
         W,H,D = self.W,self.H,self.D
         image_features = self.image_encoder(images)
-        print(image_features.shape)
+        #print(image_features.shape)
         #投影
         if self.cell_type == "attn":
             A = self.feature_projection(image_features)
-            h0 = A.mean(dim=(2, 3))
+            #print("A shape: {}".format(A.shape))
         else:
             #print(self.feature_projection.shape)
             h0 = self.feature_projection(image_features.view(image_features.shape[0], -1))#.permute(0, 2, 3, 1))
@@ -542,7 +546,7 @@ class CaptioningRNN(nn.Module):
         else:
             h = self.rnn(captions_in,h0)
         #输出投影
-        print(h.shape)
+        #print(h.shape)
         scores = self.output_projection(h)
         #计算损失
         loss = temporal_softmax_loss(scores,captions_out,ignore_index=self.ignore_index)
@@ -619,7 +623,7 @@ class CaptioningRNN(nn.Module):
             #词嵌入
                 input_embedded = self.word_embedding(input)
                 #RNN
-                prev_h,prev_c = self.rnn.step_forward(self,input_embedded,prev_h,prev_c)#因为是每个时间步的
+                prev_h,prev_c = self.rnn.step_forward(input_embedded,prev_h,prev_c)#因为是每个时间步的
                 #计算得分
                 scores = self.output_projection(prev_h)
                 value,index = scores.max(dim=1)
@@ -640,15 +644,17 @@ class CaptioningRNN(nn.Module):
                 captions[:,i] = index
                 input = index
         if self.cell_type == "attn":
-            A = self.feature_projection(image_features)
+            A = self.feature_projection(image_features)#其实根本没搞清楚A和sample的作用吧
             #LSTM的cell state
             prev_h = A.mean(dim=(2,3))
             prev_c = A.mean(dim=(2,3))
             for i in range(max_length):
             #词嵌入
+                attn, attn_weights = dot_product_attention(prev_h,A)
+                attn_weights_all[:,i] = attn_weights
                 input_embedded = self.word_embedding(input)
                 #RNN
-                prev_h,prev_c = self.rnn.step_forward(self,input_embedded,prev_h,prev_c)#因为是每个时间步的
+                prev_h,prev_c = self.rnn.step_forward(input_embedded,prev_h,prev_c,attn)#因为是每个时间步的
                 #计算得分
                 scores = self.output_projection(prev_h)
                 value,index = scores.max(dim=1)
@@ -804,6 +810,7 @@ def dot_product_attention(prev_h, A):
     attn_weights = Mattn_flatten.reshape(N,4,4)
     #计算注意力嵌入
     attn = (A_ @ Mattn_flatten).reshape(N,H)
+  
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
